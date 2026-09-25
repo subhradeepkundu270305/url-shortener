@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 720" font-family="'Segoe UI', system-ui, sans-serif" font-size="13">
+
+  <!-- Background -->
+  <rect width="900" height="720" fill="#f7f8fa"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Title -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <text x="450" y="36" text-anchor="middle" font-size="18" font-weight="bold" fill="#1f2328">URL Shortener — Architecture Overview</text>
+  <text x="450" y="56" text-anchor="middle" font-size="12" fill="#57606a">Single-file monolith · Express 5 · SQLite3 · Node.js</text>
+  <line x1="60" y1="66" x2="840" y2="66" stroke="#e5e7eb" stroke-width="1"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- LAYER LABELS (left rail) -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <text x="30" y="175" text-anchor="middle" font-size="11" fill="#57606a" transform="rotate(-90,30,175)">CLIENT</text>
+  <text x="30" y="330" text-anchor="middle" font-size="11" fill="#57606a" transform="rotate(-90,30,330)">TRANSPORT</text>
+  <text x="30" y="490" text-anchor="middle" font-size="11" fill="#57606a" transform="rotate(-90,30,490)">LOGIC + DATA</text>
+  <text x="30" y="640" text-anchor="middle" font-size="11" fill="#57606a" transform="rotate(-90,30,640)">PERSISTENCE</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- LAYER 1 — CLIENT -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="60" y="80" width="780" height="120" rx="6" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="450" y="100" text-anchor="middle" font-size="12" font-weight="bold" fill="#57606a">BROWSER CLIENT  (inline HTML + vanilla JS served from GET /)</text>
+
+  <!-- UI components -->
+  <rect x="100" y="110" width="170" height="72" rx="4" fill="#eff6ff" stroke="#3b82d4"/>
+  <text x="185" y="130" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e40af">Shorten Form</text>
+  <text x="185" y="148" text-anchor="middle" font-size="11" fill="#374151">#urlInput · #customCode</text>
+  <text x="185" y="164" text-anchor="middle" font-size="11" fill="#374151">POST /api/shorten</text>
+
+  <rect x="310" y="110" width="160" height="72" rx="4" fill="#eff6ff" stroke="#3b82d4"/>
+  <text x="390" y="130" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e40af">Links Table</text>
+  <text x="390" y="148" text-anchor="middle" font-size="11" fill="#374151">#tb — live list</text>
+  <text x="390" y="164" text-anchor="middle" font-size="11" fill="#374151">GET /api/urls</text>
+
+  <rect x="510" y="110" width="150" height="72" rx="4" fill="#eff6ff" stroke="#3b82d4"/>
+  <text x="585" y="130" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e40af">Edit Modal</text>
+  <text x="585" y="148" text-anchor="middle" font-size="11" fill="#374151">prompt() dialog</text>
+  <text x="585" y="164" text-anchor="middle" font-size="11" fill="#374151">PUT /api/urls/:code</text>
+
+  <rect x="700" y="110" width="120" height="72" rx="4" fill="#eff6ff" stroke="#3b82d4"/>
+  <text x="760" y="130" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e40af">Delete Btn</text>
+  <text x="760" y="148" text-anchor="middle" font-size="11" fill="#374151">onclick handler</text>
+  <text x="760" y="164" text-anchor="middle" font-size="11" fill="#374151">DELETE /api/urls/:code</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Arrows CLIENT → TRANSPORT -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <line x1="450" y1="200" x2="450" y2="230" stroke="#3b82d4" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+  <text x="460" y="220" font-size="10" fill="#57606a">HTTP/fetch()</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- LAYER 2 — TRANSPORT (Express router) -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="60" y="230" width="780" height="160" rx="6" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="450" y="250" text-anchor="middle" font-size="12" font-weight="bold" fill="#57606a">EXPRESS HTTP ROUTER  (index.js · app.listen :5000)</text>
+
+  <!-- Route boxes -->
+  <rect x="80"  y="260" width="120" height="114" rx="4" fill="#f0fdf4" stroke="#22c55e"/>
+  <text x="140" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#15803d">GET /</text>
+  <text x="140" y="295" text-anchor="middle" font-size="10" fill="#374151">Serve inline</text>
+  <text x="140" y="310" text-anchor="middle" font-size="10" fill="#374151">HTML string</text>
+  <text x="140" y="328" text-anchor="middle" font-size="10" fill="#57606a">200 text/html</text>
+
+  <rect x="222" y="260" width="130" height="114" rx="4" fill="#fef9c3" stroke="#eab308"/>
+  <text x="287" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#854d0e">POST /api/shorten</text>
+  <text x="287" y="295" text-anchor="middle" font-size="10" fill="#374151">Validate URL</text>
+  <text x="287" y="310" text-anchor="middle" font-size="10" fill="#374151">Gen/accept code</text>
+  <text x="287" y="325" text-anchor="middle" font-size="10" fill="#374151">INSERT into DB</text>
+  <text x="287" y="343" text-anchor="middle" font-size="10" fill="#57606a">201 JSON</text>
+
+  <rect x="366" y="260" width="130" height="114" rx="4" fill="#fef9c3" stroke="#eab308"/>
+  <text x="431" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#854d0e">GET /api/urls</text>
+  <text x="431" y="295" text-anchor="middle" font-size="10" fill="#374151">SELECT * ORDER</text>
+  <text x="431" y="310" text-anchor="middle" font-size="10" fill="#374151">Map rows →</text>
+  <text x="431" y="325" text-anchor="middle" font-size="10" fill="#374151">short_url field</text>
+  <text x="431" y="343" text-anchor="middle" font-size="10" fill="#57606a">200 JSON[]</text>
+
+  <rect x="510" y="260" width="130" height="114" rx="4" fill="#fef9c3" stroke="#eab308"/>
+  <text x="575" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#854d0e">PUT /api/urls/:code</text>
+  <text x="575" y="295" text-anchor="middle" font-size="10" fill="#374151">Validate URL</text>
+  <text x="575" y="310" text-anchor="middle" font-size="10" fill="#374151">UPDATE row</text>
+  <text x="575" y="325" text-anchor="middle" font-size="10" fill="#374151">(changes check)</text>
+  <text x="575" y="343" text-anchor="middle" font-size="10" fill="#57606a">200 / 404 JSON</text>
+
+  <rect x="654" y="260" width="165" height="114" rx="4" fill="#fef3f2" stroke="#ef4444"/>
+  <text x="736" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#991b1b">GET /:code</text>
+  <text x="736" y="293" text-anchor="middle" font-size="10" fill="#374151">SELECT by code</text>
+  <text x="736" y="308" text-anchor="middle" font-size="10" fill="#374151">+1 clicks UPDATE</text>
+  <text x="736" y="323" text-anchor="middle" font-size="10" fill="#374151">302 redirect</text>
+  <text x="736" y="338" text-anchor="middle" font-size="10" fill="#374151">DELETE /api/urls/:code</text>
+  <text x="736" y="353" text-anchor="middle" font-size="10" fill="#57606a">→ DELETE row · 200/404</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Arrows TRANSPORT → LOGIC+DATA -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <line x1="450" y1="390" x2="450" y2="430" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="460" y="415" font-size="10" fill="#57606a">db.run / db.get / db.all</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- LAYER 3 — BUSINESS LOGIC (embedded in each handler) -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="60" y="430" width="780" height="130" rx="6" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="450" y="450" text-anchor="middle" font-size="12" font-weight="bold" fill="#57606a">BUSINESS LOGIC  (inline inside every route callback — no separation)</text>
+
+  <rect x="90"  y="460" width="185" height="80" rx="4" fill="#fdf4ff" stroke="#a855f7"/>
+  <text x="182" y="479" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b21a8">URL Validator</text>
+  <text x="182" y="496" text-anchor="middle" font-size="10" fill="#374151">Protocol · length ≤ 2048</text>
+  <text x="182" y="512" text-anchor="middle" font-size="10" fill="#374151">No spaces · domain dot check</text>
+  <text x="182" y="528" text-anchor="middle" font-size="10" fill="#57606a">(duplicated in POST + PUT)</text>
+
+  <rect x="295" y="460" width="185" height="80" rx="4" fill="#fdf4ff" stroke="#a855f7"/>
+  <text x="387" y="479" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b21a8">Code Generator</text>
+  <text x="387" y="496" text-anchor="middle" font-size="10" fill="#374151">Random 6-char alphanumeric</text>
+  <text x="387" y="512" text-anchor="middle" font-size="10" fill="#374151">or accept custom (4–10 chars)</text>
+  <text x="387" y="528" text-anchor="middle" font-size="10" fill="#57606a">(no collision check)</text>
+
+  <rect x="500" y="460" width="185" height="80" rx="4" fill="#fdf4ff" stroke="#a855f7"/>
+  <text x="592" y="479" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b21a8">Raw SQL Builder</text>
+  <text x="592" y="496" text-anchor="middle" font-size="10" fill="#374151">String-concatenated queries</text>
+  <text x="592" y="512" text-anchor="middle" font-size="10" fill="#374151">INSERT · SELECT · UPDATE</text>
+  <text x="592" y="528" text-anchor="middle" font-size="10" fill="#ef4444">⚠ SQL Injection risk</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Arrow LOGIC → DB -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <line x1="450" y1="560" x2="450" y2="598" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- LAYER 4 — SQLite DATABASE -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="60" y="598" width="780" height="100" rx="6" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="450" y="618" text-anchor="middle" font-size="12" font-weight="bold" fill="#57606a">SQLITE DATABASE  (database.sqlite · single file · no WAL)</text>
+
+  <rect x="250" y="628" width="400" height="56" rx="4" fill="#f7f8fa" stroke="#d1d5db"/>
+  <text x="450" y="648" text-anchor="middle" font-size="12" font-weight="bold" fill="#374151">urls</text>
+  <text x="450" y="667" text-anchor="middle" font-size="11" fill="#374151">id INTEGER PK · code TEXT UNIQUE · original_url TEXT · clicks INTEGER · created_at TEXT</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Arrow markers -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Footer -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <line x1="60" y1="706" x2="840" y2="706" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="450" y="718" text-anchor="middle" font-size="11" fill="#57606a">Generated by IBM Bob · URL Shortener codebase · index.js (258 lines)</text>
+</svg>
