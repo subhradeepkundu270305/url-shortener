@@ -39,6 +39,95 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ---------------------------------------------------------------------------
+// Configuration constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Path to the SQLite database file, relative to the working directory.
+ * @constant {string}
+ */
+const DB_PATH = 'database.sqlite';
+
+/**
+ * TCP port the HTTP server binds to.
+ * Override via the PORT environment variable for non-development deployments.
+ * @constant {number}
+ */
+const PORT = parseInt(process.env.PORT, 10) || 5000;
+
+/**
+ * Base URL prepended to every generated short link.
+ * Override via the BASE_URL environment variable when deploying behind a
+ * reverse proxy or custom domain.
+ * @constant {string}
+ */
+const BASE_URL = process.env.BASE_URL || ('http://localhost:' + PORT);
+
+/**
+ * Maximum number of characters permitted in a submitted destination URL.
+ * @constant {number}
+ */
+const MAX_URL_LENGTH = 2048;
+
+/**
+ * Minimum character length of a short code (custom or generated).
+ * @constant {number}
+ */
+const CODE_MIN_LENGTH = 4;
+
+/**
+ * Maximum character length of a short code (custom or generated).
+ * @constant {number}
+ */
+const CODE_MAX_LENGTH = 10;
+
+/**
+ * Number of characters in an auto-generated short code.
+ * @constant {number}
+ */
+const CODE_GEN_LENGTH = 6;
+
+/**
+ * Character set used when generating random short codes.
+ * 62 symbols: 26 lowercase + 26 uppercase + 10 digits.
+ * @constant {string}
+ */
+const BASE62_CHARSET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+// ---------------------------------------------------------------------------
+// URL validation helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates a candidate URL against all application rules.
+ *
+ * Checks are applied in order; the first failing check short-circuits
+ * and returns a human-readable error string.  Returns `null` when the
+ * URL passes every rule and is safe to store.
+ *
+ * Rules (mirrors the original 8-step waterfall in POST /api/shorten and
+ * PUT /api/urls/:code):
+ *  1. Must be a string.
+ *  2. Must be non-empty.
+ *  3. Must not exceed 2 048 characters.
+ *  4. Must start with `http://` or `https://`.
+ *  5. Must not contain any space character.
+ *  6. Must contain at least one dot (minimal domain format check).
+ *
+ * @param {string} url - The URL value to validate.
+ * @returns {string|null} An error message, or `null` if the URL is valid.
+ */
+function validateUrl(url) {
+  if (typeof url !== 'string')                                  return 'url must be string';
+  if (url.length === 0)                                         return 'url cannot be empty';
+  if (url.length > MAX_URL_LENGTH)                              return 'url too long';
+  if (!url.startsWith('http://') && !url.startsWith('https://')) return 'invalid protocol, must be http or https';
+  if (url.includes(' '))                                        return 'url cannot contain spaces';
+  if (url.split('.').length < 2)                                return 'invalid domain format';
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Database initialisation
 // ---------------------------------------------------------------------------
 
@@ -51,7 +140,7 @@ app.use(express.urlencoded({ extended: true }));
  *
  * @type {sqlite3.Database}
  */
-const db = new sqlite3.Database('database.sqlite');
+const db = new sqlite3.Database(DB_PATH);
 
 /**
  * Schema bootstrap – `urls` table.
@@ -91,13 +180,13 @@ db.run("CREATE TABLE IF NOT EXISTS urls (id INTEGER PRIMARY KEY AUTOINCREMENT, c
  *  4. `delUrl()`  – Issues a DELETE request to /api/urls/:code after a
  *                   confirm dialog, then calls `load()` on success.
  *
- * @param {import('express').Request}  x    - Express request object (unused).
- * @param {import('express').Response} res2 - Express response object.
+ * @param {import('express').Request}  req - Express request object (unused).
+ * @param {import('express').Response} res - Express response object.
  * @returns {void} Sends a 200 response whose body is the full HTML document.
  */
-app.get('/', function(x, res2) {
+app.get('/', function(req, res) {
   var html = '<!DOCTYPE html><html><head><title>URL Shortener</title><style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;}h1{color:#333;}input,button{padding:10px;margin:5px 0;font-size:14px;}input{width:70%;}button{background:#0066cc;color:white;border:none;cursor:pointer;}table{width:100%;border-collapse:collapse;margin-top:20px;background:white;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#f2f2f2;}.danger{background:#cc0000;color:white;border:none;padding:5px 10px;cursor:pointer;}.edit{background:#ff9900;color:white;border:none;padding:5px 10px;cursor:pointer;}</style></head><body><h1>URL Shortener</h1><div><input type="text" id="urlInput" placeholder="Enter long URL (e.g. https://google.com)" /><br/><input type="text" id="customCode" placeholder="Custom code (optional 4-10 chars)" /><br/><button onclick="shorten()">Shorten URL</button></div><h2>All Links</h2><table id="tbl"><thead><tr><th>ID</th><th>Code</th><th>Original URL</th><th>Short Link</th><th>Clicks</th><th>Created</th><th>Actions</th></tr></thead><tbody id="tb"></tbody></table><script>function load(){fetch("/api/urls").then(function(r){return r.json()}).then(function(data){var b=document.getElementById("tb");b.innerHTML="";data.forEach(function(i){var tr=document.createElement("tr");tr.innerHTML="<td>"+i.id+"</td><td>"+i.code+"</td><td style=\"max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"+i.original_url+"</td><td><a href=\""+i.short_url+"\" target=\"_blank\">"+i.code+"</a></td><td>"+i.clicks+"</td><td>"+i.created_at+"</td><td><button class=\"edit\" onclick=\"editUrl(\'"+i.code+"\')\">Edit</button> <button class=\"danger\" onclick=\"delUrl(\'"+i.code+"\')\">Delete</button></td>";b.appendChild(tr);});});}function shorten(){var u=document.getElementById("urlInput").value;var c=document.getElementById("customCode").value;var p={url:u};if(c)p.code=c;fetch("/api/shorten",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}).then(function(r){return r.json()}).then(function(d){if(d.err){alert("Error: "+d.err);}else{document.getElementById("urlInput").value="";document.getElementById("customCode").value="";load();}});}function editUrl(c){var n=prompt("Enter new URL:");if(n){fetch("/api/urls/"+c,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:n})}).then(function(r){return r.json()}).then(function(d){if(d.err){alert("Error: "+d.err);}else{load();}});}}function delUrl(c){if(confirm("Delete "+c+"?")){fetch("/api/urls/"+c,{method:"DELETE"}).then(function(r){return r.json()}).then(function(d){load();});}}load();</script></body></html>';
-  res2.status(200).send(html);
+  res.status(200).send(html);
 });
 
 
@@ -164,97 +253,62 @@ app.get('/', function(x, res2) {
  *
  * Failure – HTTP 400: `{ "err": "<reason string>" }`
  *
- * @param {import('express').Request}  x    - Express request object.
- * @param {import('express').Response} res2 - Express response object.
+ * @param {import('express').Request}  req - Express request object.
+ * @param {import('express').Response} res - Express response object.
  * @returns {void} Sends a 201 JSON object on success, or a 400 JSON error.
  */
-app.post('/api/shorten', function(x, res2) {
-  var data = x.body;
-  if (data) {
-    if (data.url) {
-      var temp = data.url;
-      if (typeof temp === 'string') {
-        if (temp.length > 0) {
-          if (temp.length <= 2048) {
-            if (temp.startsWith('http://') || temp.startsWith('https://')) {
-              var flag = true;
-              /* Step 7: scan every character for an embedded space. */
-              for (var i = 0; i < temp.length; i++) {
-                if (temp[i] === ' ') {
-                  flag = false;
-                }
-              }
-              if (flag) {
-                var arr = temp.split('.');
-                /* Step 8: require at least one dot – minimal domain format check. */
-                if (arr.length >= 2) {
-                  var code = '';
-                  if (data.code) {
-                  /* Custom code path: validate length bounds (4–10 characters). */
-                    if (data.code.length >= 4) {
-                      if (data.code.length <= 10) {
-                        code = data.code;
-                      } else {
-                        res2.status(400).send({ err: 'code too long' });
-                        return;
-                      }
-                    } else {
-                      res2.status(400).send({ err: 'code too short' });
-                      return;
-                    }
-                  } else {
-                    var str = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                    /*
-                     * Auto-generate a 6-character alphanumeric code.
-                     * Alphabet: 62 symbols (26 lower + 26 upper + 10 digits).
-                     * Each character is chosen by flooring Math.random() * 62.
-                     */
-                    for (var j = 0; j < 6; j++) {
-                      var num = Math.floor(Math.random() * 62);
-                      code += str[num];
-                    }
-                  }
+app.post('/api/shorten', function(req, res) {
+  var body = req.body;
+  if (!body)     { return res.status(400).send({ err: 'missing body' }); }
+  if (!body.url) { return res.status(400).send({ err: 'url required' }); }
 
-                  var q = "INSERT INTO urls (code, original_url, clicks, created_at) VALUES ('" + code + "', '" + temp + "', 0, '" + new Date().toISOString() + "')";
-                  /*
-                   * Persist the new short URL record.
-                   * `created_at` is stored as an ISO-8601 UTC string.
-                   * `this.lastID` in the callback is the AUTOINCREMENT row id.
-                   */
-                  db.run(q, function(err) {
-                    var obj = {
-                      id: this.lastID,
-                      code: code,
-                      url: temp,
-                      short_url: 'http://localhost:5000/' + code,
-                      clicks: 0
-                    };
-                    res2.status(201).send(obj);
-                  });
-                } else {
-                  res2.status(400).send({ err: 'invalid domain format' });
-                }
-              } else {
-                res2.status(400).send({ err: 'url cannot contain spaces' });
-              }
-            } else {
-              res2.status(400).send({ err: 'invalid protocol, must be http or https' });
-            }
-          } else {
-            res2.status(400).send({ err: 'url too long' });
-          }
-        } else {
-          res2.status(400).send({ err: 'url cannot be empty' });
-        }
-      } else {
-        res2.status(400).send({ err: 'url must be string' });
-      }
-    } else {
-      res2.status(400).send({ err: 'url required' });
-    }
+  var targetUrl = body.url;
+  var validationError = validateUrl(targetUrl);
+  if (validationError) { return res.status(400).send({ err: validationError }); }
+
+  var shortCode = '';
+  if (body.code) {
+    /* Custom code path: validate length bounds. */
+    if (body.code.length < CODE_MIN_LENGTH) { return res.status(400).send({ err: 'code too short' }); }
+    if (body.code.length > CODE_MAX_LENGTH) { return res.status(400).send({ err: 'code too long' }); }
+    shortCode = body.code;
   } else {
-    res2.status(400).send({ err: 'missing body' });
+    /*
+     * Auto-generate a CODE_GEN_LENGTH-character alphanumeric code.
+     * Each character is sampled uniformly from BASE62_CHARSET.
+     */
+    for (var i = 0; i < CODE_GEN_LENGTH; i++) {
+      var charIndex = Math.floor(Math.random() * BASE62_CHARSET.length);
+      shortCode += BASE62_CHARSET[charIndex];
+    }
   }
+
+  /*
+   * Persist the new short URL record.
+   * `created_at` is stored as an ISO-8601 UTC string.
+   * `this.lastID` in the callback is the AUTOINCREMENT row id.
+   * Parameterised placeholders prevent SQL injection on shortCode and targetUrl.
+   */
+  db.run(
+    "INSERT INTO urls (code, original_url, clicks, created_at) VALUES (?, ?, 0, ?)",
+    [shortCode, targetUrl, new Date().toISOString()],
+    function(err) {
+      if (err) {
+        if (err.code === 'SQLITE_CONSTRAINT') {
+          return res.status(409).send({ err: 'code already exists' });
+        }
+        console.error('db INSERT error:', err);
+        return res.status(500).send({ err: 'internal server error' });
+      }
+      res.status(201).send({
+        id: this.lastID,
+        code: shortCode,
+        url: targetUrl,
+        short_url: BASE_URL + '/' + shortCode,
+        clicks: 0
+      });
+    }
+  );
 });
 
 
@@ -294,41 +348,41 @@ app.post('/api/shorten', function(x, res2) {
  * | 404    | No row exists for the given code                 |
  * | 404    | Row exists but `original_url` is empty/null      |
  *
- * @param {import('express').Request}  x    - Express request object.
- * @param {import('express').Response} res2 - Express response object.
+ * @param {import('express').Request}  req - Express request object.
+ * @param {import('express').Response} res - Express response object.
  * @returns {void} Issues a 302 redirect or sends a JSON error body.
  */
-app.get('/:code', function(x, res2) {
-  var temp = x.params.code;
-  if (temp) {
-    if (temp.length >= 4) {
-      if (temp.length <= 10) {
-        var q = "SELECT * FROM urls WHERE code = '" + temp + "'";
-        /* Step 1: look up the row by its short code. */
-        db.get(q, function(err, row) {
-          if (row) {
-            if (row.original_url) {
-              var q2 = "UPDATE urls SET clicks = clicks + 1 WHERE code = '" + temp + "'";
-              /* Step 2: atomically increment clicks, then issue the redirect. */
-              db.run(q2, function(err2) {
-                res2.redirect(302, row.original_url);
-              });
-            } else {
-              res2.status(404).send({ err: 'url empty' });
-            }
-          } else {
-            res2.status(404).send({ err: 'not found' });
-          }
-        });
-      } else {
-        res2.status(400).send({ err: 'code length invalid' });
+app.get('/:code', function(req, res) {
+  var shortCode = req.params.code;
+  if (!shortCode)                              { return res.status(400).send({ err: 'no code' }); }
+  if (shortCode.length < CODE_MIN_LENGTH ||
+      shortCode.length > CODE_MAX_LENGTH)      { return res.status(400).send({ err: 'code length invalid' }); }
+
+  /* Step 1: look up the row by its short code. */
+  db.get(
+    "SELECT * FROM urls WHERE code = ?",
+    [shortCode],
+    function(err, urlRecord) {
+      if (err) {
+        console.error('db SELECT error (redirect):', err);
+        return res.status(500).send({ err: 'internal server error' });
       }
-    } else {
-      res2.status(400).send({ err: 'code length invalid' });
+      if (!urlRecord)              { return res.status(404).send({ err: 'not found' }); }
+      if (!urlRecord.original_url) { return res.status(404).send({ err: 'url empty' }); }
+
+      /* Step 2: increment clicks, then issue the redirect.
+       * A counter failure is logged but does not abort the redirect —
+       * delivering the destination is more important than the click tally. */
+      db.run(
+        "UPDATE urls SET clicks = clicks + 1 WHERE code = ?",
+        [shortCode],
+        function(err2) {
+          if (err2) { console.error('db UPDATE clicks error:', err2); }
+          res.redirect(302, urlRecord.original_url);
+        }
+      );
     }
-  } else {
-    res2.status(400).send({ err: 'no code' });
-  }
+  );
 });
 
 
@@ -364,36 +418,40 @@ app.get('/:code', function(x, res2) {
  * ]
  * ```
  *
- * @param {import('express').Request}  x    - Express request object (unused).
- * @param {import('express').Response} res2 - Express response object.
+ * @param {import('express').Request}  req - Express request object (unused).
+ * @param {import('express').Response} res - Express response object.
  * @returns {void} Sends a 200 JSON array (empty array when no records exist).
  */
-app.get('/api/urls', function(x, res2) {
-  var q = "SELECT * FROM urls ORDER BY id DESC";
-  db.all(q, function(err, arr) {
-    if (arr) {
-      var arr2 = [];
-      /* Map each raw row to the public response shape, adding `short_url`. */
-      for (var i = 0; i < arr.length; i++) {
-        var thing = arr[i];
-        if (thing) {
-          var data = {
-            id: thing.id,
-            code: thing.code,
-            original_url: thing.original_url,
-            short_url: 'http://localhost:5000/' + thing.code,
-            clicks: thing.clicks,
-            created_at: thing.created_at
-          };
-          arr2.push(data);
-        }
+app.get('/api/urls', function(req, res) {
+  /* No user input in this query; no injection surface. */
+  db.all(
+    "SELECT * FROM urls ORDER BY id DESC",
+    [],
+    function(err, rows) {
+      if (err) {
+        console.error('db SELECT ALL error:', err);
+        return res.status(500).send({ err: 'internal server error' });
       }
-      res2.status(200).send(arr2);
-    } else {
       /* No rows returned – send empty array rather than null/undefined. */
-      res2.status(200).send([]);
+      if (!rows) { return res.status(200).send([]); }
+
+      /* Map each raw row to the public response shape, adding `short_url`. */
+      var records = [];
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row) { continue; }
+        records.push({
+          id: row.id,
+          code: row.code,
+          original_url: row.original_url,
+          short_url: BASE_URL + '/' + row.code,
+          clicks: row.clicks,
+          created_at: row.created_at
+        });
+      }
+      res.status(200).send(records);
     }
-  });
+  );
 });
 
 
@@ -430,33 +488,35 @@ app.get('/api/urls', function(x, res2) {
  * Failure – HTTP 400: `{ "err": "code required" }` (empty param)
  * Failure – HTTP 404: `{ "err": "not found" }` (no matching row)
  *
- * @param {import('express').Request}  x    - Express request object.
- * @param {import('express').Response} res2 - Express response object.
+ * @param {import('express').Request}  req - Express request object.
+ * @param {import('express').Response} res - Express response object.
  * @returns {void} Sends a 200 JSON object on success or a JSON error body.
  */
-app.get('/api/urls/:code', function(x, res2) {
-  var temp = x.params.code;
-  if (temp) {
-    var q = "SELECT * FROM urls WHERE code = '" + temp + "'";
-    db.get(q, function(err, row) {
-      if (row) {
-        /* Shape the raw database row into the public response object. */
-        var data = {
-          id: row.id,
-          code: row.code,
-          original_url: row.original_url,
-          short_url: 'http://localhost:5000/' + row.code,
-          clicks: row.clicks,
-          created_at: row.created_at
-        };
-        res2.status(200).send(data);
-      } else {
-        res2.status(404).send({ err: 'not found' });
+app.get('/api/urls/:code', function(req, res) {
+  var shortCode = req.params.code;
+  if (!shortCode) { return res.status(400).send({ err: 'code required' }); }
+
+  db.get(
+    "SELECT * FROM urls WHERE code = ?",
+    [shortCode],
+    function(err, urlRecord) {
+      if (err) {
+        console.error('db SELECT error (fetch one):', err);
+        return res.status(500).send({ err: 'internal server error' });
       }
-    });
-  } else {
-    res2.status(400).send({ err: 'code required' });
-  }
+      if (!urlRecord) { return res.status(404).send({ err: 'not found' }); }
+
+      /* Shape the raw database row into the public response object. */
+      res.status(200).send({
+        id: urlRecord.id,
+        code: urlRecord.code,
+        original_url: urlRecord.original_url,
+        short_url: BASE_URL + '/' + urlRecord.code,
+        clicks: urlRecord.clicks,
+        created_at: urlRecord.created_at
+      });
+    }
+  );
 });
 
 
@@ -495,71 +555,41 @@ app.get('/api/urls/:code', function(x, res2) {
  * Failure – HTTP 400: `{ "err": "<validation reason>" }`
  * Failure – HTTP 404: `{ "err": "not found" }` (code does not exist in DB)
  *
- * @param {import('express').Request}  x    - Express request object.
- * @param {import('express').Response} res2 - Express response object.
+ * @param {import('express').Request}  req - Express request object.
+ * @param {import('express').Response} res - Express response object.
  * @returns {void} Sends a 200 JSON object on success or a JSON error body.
  */
-app.put('/api/urls/:code', function(x, res2) {
-  var tempCode = x.params.code;
-  var data = x.body;
-  if (tempCode) {
-    if (data) {
-      if (data.url) {
-        var temp = data.url;
-        if (typeof temp === 'string') {
-          if (temp.length > 0) {
-            if (temp.length <= 2048) {
-              if (temp.startsWith('http://') || temp.startsWith('https://')) {
-                var flag = true;
-                /* Scan every character for an embedded space. */
-                for (var i = 0; i < temp.length; i++) {
-                  if (temp[i] === ' ') {
-                    flag = false;
-                  }
-                }
-                if (flag) {
-                  var arr = temp.split('.');
-                  /* Require at least one dot – minimal domain format check. */
-                  if (arr.length >= 2) {
-                    var q = "UPDATE urls SET original_url = '" + temp + "' WHERE code = '" + tempCode + "'";
-                    /*
-                     * Run the UPDATE; inspect `this.changes` to distinguish a
-                     * successful update (> 0) from a non-existent code (=== 0).
-                     */
-                    db.run(q, function(err) {
-                      if (this.changes > 0) {
-                        res2.status(200).send({ msg: 'updated', code: tempCode, new_url: temp });
-                      } else {
-                        res2.status(404).send({ err: 'not found' });
-                      }
-                    });
-                  } else {
-                    res2.status(400).send({ err: 'invalid domain format' });
-                  }
-                } else {
-                  res2.status(400).send({ err: 'url cannot contain spaces' });
-                }
-              } else {
-                res2.status(400).send({ err: 'invalid protocol, must be http or https' });
-              }
-            } else {
-              res2.status(400).send({ err: 'url too long' });
-            }
-          } else {
-            res2.status(400).send({ err: 'url cannot be empty' });
-          }
-        } else {
-          res2.status(400).send({ err: 'url must be string' });
-        }
-      } else {
-        res2.status(400).send({ err: 'url required' });
+app.put('/api/urls/:code', function(req, res) {
+  var shortCode = req.params.code;
+  var body = req.body;
+  if (!shortCode) { return res.status(400).send({ err: 'code required' }); }
+  if (!body)      { return res.status(400).send({ err: 'missing body' }); }
+  if (!body.url)  { return res.status(400).send({ err: 'url required' }); }
+
+  var targetUrl = body.url;
+  var validationError = validateUrl(targetUrl);
+  if (validationError) { return res.status(400).send({ err: validationError }); }
+
+  /*
+   * Run the UPDATE; inspect `this.changes` to distinguish a
+   * successful update (> 0) from a non-existent code (=== 0).
+   * Parameterised placeholders prevent injection on targetUrl and shortCode.
+   */
+  db.run(
+    "UPDATE urls SET original_url = ? WHERE code = ?",
+    [targetUrl, shortCode],
+    function(err) {
+      if (err) {
+        console.error('db UPDATE error:', err);
+        return res.status(500).send({ err: 'internal server error' });
       }
-    } else {
-      res2.status(400).send({ err: 'missing body' });
+      if (this.changes > 0) {
+        res.status(200).send({ msg: 'updated', code: shortCode, new_url: targetUrl });
+      } else {
+        res.status(404).send({ err: 'not found' });
+      }
     }
-  } else {
-    res2.status(400).send({ err: 'code required' });
-  }
+  );
 });
 
 
@@ -591,36 +621,36 @@ app.put('/api/urls/:code', function(x, res2) {
  * Failure – HTTP 400: `{ "err": "code required" }` (empty param)
  * Failure – HTTP 404: `{ "err": "not found" }` (no matching row in DB)
  *
- * @param {import('express').Request}  x    - Express request object.
- * @param {import('express').Response} res2 - Express response object.
+ * @param {import('express').Request}  req - Express request object.
+ * @param {import('express').Response} res - Express response object.
  * @returns {void} Sends a 200 JSON object on success or a JSON error body.
  */
-app.delete('/api/urls/:code', function(x, res2) {
-  var temp = x.params.code;
-  if (temp) {
-    if (temp.length >= 4) {
-      if (temp.length <= 10) {
-        var q = "DELETE FROM urls WHERE code = '" + temp + "'";
-        db.run(q, function(err) {
-          /*
-           * `this.changes` is 0 when DELETE matched no rows,
-           * meaning the code does not exist in the database.
-           */
-          if (this.changes > 0) {
-            res2.status(200).send({ msg: 'deleted', code: temp });
-          } else {
-            res2.status(404).send({ err: 'not found' });
-          }
-        });
-      } else {
-        res2.status(400).send({ err: 'invalid code length' });
+app.delete('/api/urls/:code', function(req, res) {
+  var shortCode = req.params.code;
+  if (!shortCode)                              { return res.status(400).send({ err: 'code required' }); }
+  if (shortCode.length < CODE_MIN_LENGTH ||
+      shortCode.length > CODE_MAX_LENGTH)      { return res.status(400).send({ err: 'invalid code length' }); }
+
+  /*
+   * `this.changes` is 0 when DELETE matched no rows,
+   * meaning the code does not exist in the database.
+   * Parameterised placeholder prevents injection on shortCode.
+   */
+  db.run(
+    "DELETE FROM urls WHERE code = ?",
+    [shortCode],
+    function(err) {
+      if (err) {
+        console.error('db DELETE error:', err);
+        return res.status(500).send({ err: 'internal server error' });
       }
-    } else {
-      res2.status(400).send({ err: 'invalid code length' });
+      if (this.changes > 0) {
+        res.status(200).send({ msg: 'deleted', code: shortCode });
+      } else {
+        res.status(404).send({ err: 'not found' });
+      }
     }
-  } else {
-    res2.status(400).send({ err: 'code required' });
-  }
+  );
 });
 
 
@@ -635,6 +665,6 @@ app.delete('/api/urls/:code', function(x, res2) {
  * The callback fires once the port is successfully acquired and the
  * server is ready to accept connections.
  */
-app.listen(5000, function() {
-  console.log('server running on port 5000');
+app.listen(PORT, function() {
+  console.log('server running on port ' + PORT);
 });
